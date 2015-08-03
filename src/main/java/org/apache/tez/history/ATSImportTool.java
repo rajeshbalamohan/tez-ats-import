@@ -90,7 +90,6 @@ import static org.apache.hadoop.classification.InterfaceStability.Evolving;
  * --batchSize <batchSize>       Optional. batch size for downloading data
  * --dagId <dagId>               DagId that needs to be downloaded
  * --downloadDir <downloadDir>   download directory where data needs to be downloaded
- * --downloadRelatedEntities <true/false> Optional. Download related entities (e.g Hive info)
  * --help                        print help
  *
  * </pre>
@@ -103,7 +102,6 @@ public class ATSImportTool extends Configured implements Tool {
   private static final String BATCH_SIZE = "batchSize";
   private static final int BATCH_SIZE_DEFAULT = 100;
 
-  private static final String DOWNLOAD_RELATED_ENTITIES = "downloadRelatedEntities";
 
   private static final String YARN_TIMELINE_SERVICE_ADDRESS = "yarnTimelineAddress";
   private static final String DAG_ID = "dagId";
@@ -412,13 +410,6 @@ public class ATSImportTool extends Configured implements Tool {
         .isRequired(false)
         .create();
 
-    Option downloadRelatedEntities = OptionBuilder.withArgName(DOWNLOAD_RELATED_ENTITIES)
-        .withDescription("Optional. Download related entities (e.g Hive related info)")
-        .withLongOpt(DOWNLOAD_RELATED_ENTITIES)
-        .withType(Boolean.class)
-        .isRequired(false)
-        .create();
-
     Option help = OptionBuilder.withArgName("help").withLongOpt("help")
         .withDescription("print help").isRequired(false).create();
 
@@ -427,7 +418,6 @@ public class ATSImportTool extends Configured implements Tool {
     opts.addOption(downloadDirOption);
     opts.addOption(atsAddressOption);
     opts.addOption(batchSizeOption);
-    opts.addOption(downloadRelatedEntities);
     opts.addOption(help);
     return opts;
   }

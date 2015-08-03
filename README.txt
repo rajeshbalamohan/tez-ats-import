@@ -1,4 +1,4 @@
-Tez ATS import tool, which can optionally download data from related entities (e.g Hive related contents can be downloaded by specifying "--downloadRelatedEntities=true").
+Tez ATS import tool, which can optionally download data from related entities (e.g Hive related contents would be downloaded to "additionalInfo" json).
 
 These additionally downloaded related entities are stored in additionalInfo-*.json.  These info can be exposed via getAdditionalInfo (DAGInfo) later.
 
