@@ -118,22 +118,21 @@ public class ATSImportTool extends Configured implements Tool {
   private static final String UTF8 = "UTF-8";
 
   private static final String HIVE_QUERY_ID = "/HIVE_QUERY_ID/";
-  private static final String ADDITIONAL_INFO = "ADDITIONAL_INFO";
+  private static final String ADDITIONAL_INFO = "additionalInfo";
 
   private static final String LINE_SEPARATOR = System.getProperty("line.separator");
 
   private final int batchSize;
   private final String baseUri;
   private final String dagId;
-  private final boolean downloadRelatedEntities;
 
   private final File downloadDir;
   private final File zipFile;
   private final Client httpClient;
   private final TezDAGID tezDAGID;
 
-  public ATSImportTool(String baseUri, String dagId, File baseDownloadDir, int batchSize,
-      boolean downloadRelatedEntities) throws TezException {
+  public ATSImportTool(String baseUri, String dagId, File baseDownloadDir, int batchSize)
+      throws TezException {
     Preconditions.checkArgument(!Strings.isNullOrEmpty(dagId), "dagId can not be null or empty");
     Preconditions.checkArgument(baseDownloadDir != null, "downloadDir can not be null");
     tezDAGID = TezDAGID.fromString(dagId);
@@ -141,7 +140,6 @@ public class ATSImportTool extends Configured implements Tool {
     this.baseUri = baseUri;
     this.batchSize = batchSize;
     this.dagId = dagId;
-    this.downloadRelatedEntities = downloadRelatedEntities;
 
     this.httpClient = getHttpClient();
 
@@ -209,14 +207,11 @@ public class ATSImportTool extends Configured implements Tool {
     //Write in formatted way
     IOUtils.write(finalJson.toString(4), zos, UTF8);
 
-    //Get primaryFilters
-    //TODO: make this optional download
-    if (downloadRelatedEntities) {
-      JSONObject primaryFilters = dagRoot.optJSONObject(Constants.PRIMARY_FILTERS);
-      if (primaryFilters != null) {
-        JSONArray dagNames = primaryFilters.optJSONArray(Constants.DAG_NAME);
-        populateAdditionalInfo(dagNames, zos);
-      }
+    //Get primaryFilters and the related entities
+    JSONObject primaryFilters = dagRoot.optJSONObject(Constants.PRIMARY_FILTERS);
+    if (primaryFilters != null) {
+      JSONArray dagNames = primaryFilters.optJSONArray(Constants.DAG_NAME);
+      populateAdditionalInfo(dagNames, zos);
     }
 
     //Download vertex
@@ -511,11 +506,8 @@ public class ATSImportTool extends Configured implements Tool {
       int batchSize = (cmdLine.hasOption(BATCH_SIZE)) ?
           (Integer.parseInt(cmdLine.getOptionValue(BATCH_SIZE))) : BATCH_SIZE_DEFAULT;
 
-      boolean downloadRelatedEntities = (cmdLine.hasOption(DOWNLOAD_RELATED_ENTITIES)) ? (Boolean
-          .parseBoolean(cmdLine.getOptionValue(DOWNLOAD_RELATED_ENTITIES))) : false;
-
       result = ToolRunner.run(conf, new ATSImportTool(baseTimelineURL, dagId,
-          downloadDir, batchSize, downloadRelatedEntities), args);
+          downloadDir, batchSize), args);
 
       return result;
     } catch (MissingOptionException missingOptionException) {
