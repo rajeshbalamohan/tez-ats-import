@@ -1,8 +1,8 @@
 Tez ATS import tool, which can optionally download data from related entities (e.g Hive related contents would be downloaded to "additionalInfo" json).
 
-These additionally downloaded related entities are stored in additionalInfo-*.json.  These info can be exposed via getAdditionalInfo (DAGInfo) later.
+These additionally downloaded related entities are stored in additionalInfo.json in the downloaded zip file.  These info can be exposed via getAdditionalInfo (DAGInfo) later.
 
-YARN related information can also be retrieved and stored. (e.g http://atsmachine:8188/ws/v1/applicationhistory/apps/application_1437197396589_0782/appattempts)
+YARN related information are also be retrieved and stored. (e.g http://atsmachine:8188/ws/v1/applicationhistory/apps/application_1437197396589_0782/appattempts)
 
 Run (example):
 =============
@@ -13,7 +13,6 @@ HADOOP_CLASSPATH=TEZ_JARS/*:$TEZ_JARS/lib/*:$HADOOP_CLASSPATH hadoop jar /tmp/te
 In case hadoop config already has timeline address, ignore specifying yarnTimelineAddress from the above example.
 
 Tez related jars are needed as it ATSImportTool relies on TezDAGID.
-
 
 
 Example additionalInfo.json:
