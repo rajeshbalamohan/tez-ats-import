@@ -20,7 +20,18 @@ Example additionalInfo.json:
 //In case hive related information is present, it would be populated in "hive" tag (e.g explain plan etc). In case both are not available, errors are ignored and empty additionalInfo file would be created.
 
 {"additionalInfo": {
-    "hive": {},
+    "hive": {
+	...
+	...
+	otherinfo: {
+STATUS: false,
+QUERY: "{"queryText":"\nselect * from tmp2 left semi join tmp1 where c1 = id and c0 = q","queryPlan":{"STAGE DEPENDENCIES":{"Stage-1":{"ROOT STAGE":"TRUE"},"Stage-0":{"DEPENDENT STAGES":"Stage-1"}},"STAGE PLANS":{"Stage-1":{"Tez":{"Vertices:":{"Map 2":{"Execution mode:":"vectorized","Map Operator Tree:":[{"TableScan":{"alias:":"tmp1","Statistics:":"Num rows: 10 Data size: 2585 Basic stats: COMPLETE Column stats: NONE","filterExpr:":"(c1 is not null and c0 is not null) (type: boolean)","children":{"Filter Operator":{"Statistics:":"Num rows: 3 Data size: 775 Basic stats: COMPLETE Column stats: NONE","children":{"Reduce Output Operator":{"value expressions:":"d (type: string)","sort order:":"++","Statistics:":"Num rows: 3 Data size: 775 Basic stats: COMPLETE Column stats: NONE","Map-reduce partition columns:":"c1 (type: string), c0 (type: string)","key expressions:":"c1 (type: string), c0 (type: string)"}},"predicate:":"(c1 is not null and c0 is not null) (type: boolean)"}}}}]},"Map 1":{"Execution mode:":"vectorized","Map Operator Tree:":[{"TableScan":{"alias:":"tmp2","Statistics:":"Num rows: 5 Data size: 1295 Basic stats: COMPLETE Column stats: NONE","filterExpr:":"(id is not null and q is not null) (type: boolean)","children":{"Filter Operator":{"Statistics:":"Num rows: 2 Data size: 518 Basic stats: COMPLETE Column stats: NONE","children":{"Map Join Operator":{"HybridGraceHashJoin:":"true","Statistics:":"Num rows: 3 Data size: 852 Basic stats: COMPLETE Column stats: NONE","keys:":{"0":"id (type: string), q (type: string)","1":"c1 (type: string), c0 (type: string)"},"input vertices:":{"1":"Map 2"},"children":{"Filter Operator":{"Statistics:":"Num rows: 1 Data size: 284 Basic stats: COMPLETE Column stats: NONE","children":{"Select Operator":{"Statistics:":"Num rows: 1 Data size: 284 Basic stats: COMPLETE Column stats: NONE","children":{"File Output Operator":{"compressed:":"false","Statistics:":"Num rows: 1 Data size: 284 Basic stats: COMPLETE Column stats: NONE","table:":{"input format:":"org.apache.hadoop.mapred.TextInputFormat","output format:":"org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat","serde:":"org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"}}},"outputColumnNames:":["_col0","_col1","_col2","_col3","_col4","_col5"],"expressions:":"_col0 (type: string), _col1 (type: string), _col2 (type: string), _col6 (type: string), _col7 (type: string), _col8 (type: string)"}},"predicate:":"((_col8 = _col0) and (_col6 = _col2)) (type: boolean)"}},"condition map:":[{"":"Left Semi Join 0 to 1"}],"outputColumnNames:":["_col0","_col1","_col2","_col6","_col7","_col8"]}},"predicate:":"(id is not null and q is not null) (type: boolean)"}}}}]}},"Edges:":{"Map 1":{"parent":"Map 2","type":"BROADCAST_EDGE"}},"DagName:":"gopal_20150803012837_b7583726-7d58-4945-a05b-abf0dbb8acb5:6"}},"Stage-0":{"Fetch Operator":{"Processor Tree:":{"ListSink":{}},"limit:":"-1"}}}}}",
+TEZ: true,
+MAPRED: false
+}
+...
+...
+	},
     "yarn": {
         "app": [{
             "appId": "application_1437197396589_0864",
