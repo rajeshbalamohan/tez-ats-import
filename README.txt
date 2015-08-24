@@ -10,6 +10,12 @@ These additionally downloaded related entities are stored in additionalInfo.json
 
 YARN related information are also be retrieved and stored. (e.g http://atsmachine:8188/ws/v1/applicationhistory/apps/application_1437197396589_0782/appattempts)
 
+Build & Install:
+================
+Run "mvn clean package"
+Copy "tez-ats-import-0.8.0-SNAPSHOT.jar" to whichever machine you want to run it from. 
+
+
 Usage:
 ======  
   yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar
