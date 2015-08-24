@@ -48,11 +48,11 @@ import org.apache.hadoop.http.HttpConfig;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
+import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.PatternLayout;
-import org.apache.tez.dag.records.TezDAGID;
 import org.apache.tez.history.parser.datamodel.Constants;
 import org.codehaus.jettison.json.JSONArray;
 import org.codehaus.jettison.json.JSONException;
@@ -60,8 +60,10 @@ import org.codehaus.jettison.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import javax.ws.rs.core.MediaType;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -69,12 +71,24 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.apache.hadoop.classification.InterfaceStability.Evolving;
 
 /**
+ * <pre>
+ * This is an extension of ATSImportTool which is available in Tez.
+ * 1. It tries to gather additional details about YARN, Hive.
+ * 2. If there are multiple DAGs present in an application (e.g Hive
+ *     session), it tries to download them all in independent zip files.
+ * 3. It is also possible to provide specific DAGs that need to be downloaded as well.
+ * 4. No TEZ dependency with this.
+ *    Just run the command as "yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar"
+ * </pre>
+ *
  * <pre>
  * Simple tool which imports ATS data pertaining to a DAG (Dag, Vertex, Task, Attempt)
  * and creates a zip file out of it.
@@ -108,21 +122,26 @@ public class ATSImportTool_V2 extends Configured implements Tool {
 
   private static final String LOG4J_CONFIGURATION = "log4j.configuration";
 
-  private static final String YARN_TIMELINE_SERVICE_ADDRESS = "yarnTimelineAddress";
+  private static final String APP_ID = "appId";
   private static final String DAG_ID = "dagId";
   private static final String BASE_DOWNLOAD_DIR = "downloadDir";
 
   private static final String HTTPS_SCHEME = "https://";
   private static final String HTTP_SCHEME = "http://";
 
+  private static final String RM_APP_STATE = "state";
+
   private static final String VERTEX_QUERY_STRING = "%s/%s?limit=%s&primaryFilter=%s:%s";
   private static final String TASK_QUERY_STRING = "%s/%s?limit=%s&primaryFilter=%s:%s";
   private static final String TASK_ATTEMPT_QUERY_STRING = "%s/%s?limit=%s&primaryFilter=%s:%s";
   private static final String UTF8 = "UTF-8";
 
-  private static final String HIVE_QUERY_ID_STRING = "/HIVE_QUERY_ID_STRING/";
+  private static final String YARN_TIMELINE_SERVICE_ADDRESS = "yarnTimelineAddress";
+  private static final String YARN_RM_STATUS_ADDRESS = "yarnRMStatusAddress";
+  private static final String YARN_RM_STATUS_QUERY = "/ws/v1/cluster/apps/";
   private static final String YARN_APP_ATTEMPT_QUERY = "%s/appattempts/%s";
   private static final String YARN_APP_CONTAINERS_QUERY = "%s/appattempts/%s/containers";
+  private static final String HIVE_QUERY_ID_STRING = "/HIVE_QUERY_ID/";
 
   //TODO: Move this to Constants
   private static final String ADDITIONAL_INFO = "additionalInfo";
@@ -137,31 +156,35 @@ public class ATSImportTool_V2 extends Configured implements Tool {
 
   private final int batchSize;
   private final String baseTezATSUri;
-  private final String dagId;
+  private final List<String> dagIdList;
 
-  private final String baseYarnATSUri;
+  private final String baseYarnATSHistoryUri;
+  private final String yarnRMWebAppUrl;
 
   private final File downloadDir;
-  private final File zipFile;
+  //private final File zipFile;
   private final Client httpClient;
-  private final TezDAGID tezDAGID;
+  private final String appId;
 
-  public ATSImportTool_V2(String baseTimelineURL, String dagId, File baseDownloadDir, int batchSize)
-      throws ATSImportException {
-    Preconditions.checkArgument(!Strings.isNullOrEmpty(dagId), "dagId can not be null or empty");
+  private final JSONObject appJson;
+
+  public ATSImportTool_V2(String yarnRMWebAppUrl, String baseTimelineURL, String appId,
+      @Nullable String[] dagIds, File baseDownloadDir, int batchSize)
+      throws ATSImportException, IOException, InterruptedException, JSONException {
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(appId), "appId can not be null or empty");
     Preconditions.checkArgument(baseDownloadDir != null, "downloadDir can not be null");
-    tezDAGID = TezDAGID.fromString(dagId);
+    //Not using TezDAGId here. Otherwise, tez related jars have to be added in jar
+    this.appId = appId;
 
     this.baseTezATSUri = getTezBaseATSUrl(baseTimelineURL);
-    this.baseYarnATSUri = getYARNBaseATSUrl(baseTimelineURL);
+    this.baseYarnATSHistoryUri = getYARNHistoryBaseUrl(baseTimelineURL);
+    this.yarnRMWebAppUrl = yarnRMWebAppUrl;
 
     this.batchSize = batchSize;
-    this.dagId = dagId;
-
     this.httpClient = getHttpClient();
 
-    this.downloadDir = new File(baseDownloadDir, dagId);
-    this.zipFile = new File(downloadDir, this.dagId + ".zip");
+    this.downloadDir = new File(baseDownloadDir, appId);
+    //this.zipFile = new File(downloadDir, this.appId + ".zip");
 
     boolean result = downloadDir.mkdirs();
     LOG.trace("Result of creating dir {}={}", downloadDir, result);
@@ -169,85 +192,174 @@ public class ATSImportTool_V2 extends Configured implements Tool {
       throw new IllegalArgumentException("dir=" + downloadDir + " does not exist");
     }
 
-    LOG.info("Using baseURL={}, dagId={}, batchSize={}, downloadDir={}", baseTezATSUri, dagId,
-        batchSize, downloadDir);
+    LOG.info("Using baseURL={}, appId={}, batchSize={}, downloadDir={}", baseTezATSUri,
+        appId, batchSize, downloadDir);
+
+    waitForApplicationToComplete();
+    appJson = new JSONObject();
+    populateApplicationDetails();
+
+    this.dagIdList = new LinkedList<String>();
+    if (dagIds != null) {
+      for(String dagId : dagIds) {
+        //ensure that if the dagId belongs to the same appId
+        Preconditions.checkState(Utils.getAppIdFromDAGId(dagId).toString().equals(appId),
+            "dagId's appId is not matching with provided appId");
+        dagIdList.add(dagId);
+      }
+    } else {
+      //Download all dags pertaining to this application
+      getDAGIds();
+    }
+  }
+
+  private void waitForApplicationToComplete()
+      throws IOException, ATSImportException, InterruptedException, JSONException {
+    YarnApplicationState state = getAppStatus(appId);
+    while (state == YarnApplicationState.RUNNING ||
+        state == YarnApplicationState.NEW ||
+        state == YarnApplicationState.SUBMITTED ||
+        state == YarnApplicationState.ACCEPTED) {
+
+      //keep trying until the app finishes
+      LOG.info("App state: " + state + ", sleeping for 10 seconds to check state again");
+      Thread.sleep(10000);
+
+      state = getAppStatus(appId);
+    }
+    LOG.info("App state: " + state);
+  }
+
+  private YarnApplicationState getAppStatus(String applicationId)
+      throws IOException, ATSImportException, JSONException {
+    //Check RM for the app status
+    String appUrl = yarnRMWebAppUrl + applicationId;
+    LOG.info("Will attempt to download app status: " + appUrl);
+    JSONObject appStatus = getJsonRootEntity(appUrl);
+    Preconditions.checkState(appStatus != null, "Response can not be null");
+    return YarnApplicationState.valueOf(
+        appStatus.getJSONObject("app").optString(RM_APP_STATE));
   }
 
   /**
-   * Download data from ATS for specific DAG
+   * Download data from ATS.
    *
    * @throws Exception
    */
   private void download() throws Exception {
-    FileOutputStream fos = null;
     try {
-      fos = new FileOutputStream(zipFile, false);
-      ZipOutputStream zos = new ZipOutputStream(fos);
-      downloadData(zos);
-      IOUtils.closeQuietly(zos);
-    } catch (Exception e) {
-      LOG.error("Exception in download", e);
-      throw e;
+      Preconditions.checkState(!dagIdList.isEmpty(), "No dags to be downloaded");
+      for (String dagId : dagIdList) {
+        LOG.info("Downloading data for dagId: " + dagId);
+        downloadData(dagId);
+      }
     } finally {
       if (httpClient != null) {
         httpClient.destroy();
       }
-      IOUtils.closeQuietly(fos);
+    }
+    LOG.info("Finished downloading data.");
+  }
+
+  private void populateApplicationDetails() throws JSONException, IOException, ATSImportException {
+      if (appJson.optJSONObject(Constants.APPLICATION) == null) {
+        //Download application details (TEZ_VERSION etc)
+        String tezAppId = "tez_" + appId.toString();
+        String tezAppURL =
+            String.format("%s/%s/%s", baseTezATSUri, Constants.TEZ_APPLICATION, tezAppId);
+        LOG.info("Will attempt to download tezAppUrl: " + tezAppURL);
+        JSONObject tezAppJson = getJsonRootEntity(tezAppURL);
+        appJson.put(Constants.APPLICATION, tezAppJson);
+      }
+  }
+
+  private void getDAGIds() throws JSONException {
+    Preconditions.checkState(appJson != null, "appJson can not be empty");
+    Preconditions.checkState(appJson.optJSONObject(Constants.APPLICATION) != null,
+        "Application  data has to be available in appJson");
+    //Get all dags in the app and add them to dagIdList
+    //TODO: tez_application always returns relatedentities. Others return relatedEntities.
+    JSONObject relatedEntities = appJson.getJSONObject(Constants.APPLICATION)
+        .optJSONObject("relatedentities");
+    if (relatedEntities != null) {
+      JSONArray dagIds = relatedEntities.optJSONArray(Constants.TEZ_DAG_ID);
+      if (dagIds != null) {
+        for (int i = 0; i < dagIds.length(); i++) {
+          String dagId = dagIds.getString(i);
+          dagIdList.add(dagId);
+          LOG.info("Adding dagId: " + dagId);
+        }
+      }
     }
   }
 
   /**
    * Download DAG data (DAG, Vertex, Task, TaskAttempts) from ATS and write to zip file
    *
-   * @param zos
    * @throws ATSImportException
    * @throws JSONException
    * @throws IOException
    */
-  private void downloadData(ZipOutputStream zos) throws ATSImportException, JSONException, IOException {
-    JSONObject finalJson = new JSONObject();
+  private void downloadData(String dagId)
+      throws ATSImportException, JSONException, IOException {
+    //Create a zip file per DAG
+    FileOutputStream fos = null;
+    ZipOutputStream zos = null;
+    File zipFile = new File(downloadDir, dagId + ".zip");
 
-    //Download application details (TEZ_VERSION etc)
-    String tezAppId = "tez_" + tezDAGID.getApplicationId().toString();
-    String tezAppUrl =
-        String.format("%s/%s/%s", baseTezATSUri, Constants.TEZ_APPLICATION, tezAppId);
-    JSONObject tezAppJson = getJsonRootEntity(tezAppUrl);
-    finalJson.put(Constants.APPLICATION, tezAppJson);
+    try {
+      JSONObject finalJson = new JSONObject();
 
-    //Download dag
-    String dagUrl = String.format("%s/%s/%s", baseTezATSUri, Constants.TEZ_DAG_ID, dagId);
-    JSONObject dagRoot = getJsonRootEntity(dagUrl);
-    finalJson.put(Constants.DAG, dagRoot);
+      //Get application details (TEZ_VERSION etc)
+      finalJson.put(Constants.APPLICATION, appJson);
 
-    //Create a zip entry with dagId as its name.
-    ZipEntry zipEntry = new ZipEntry(dagId);
-    zos.putNextEntry(zipEntry);
-    //Write in formatted way
-    IOUtils.write(finalJson.toString(4), zos, UTF8);
+      //Download dag
+      String dagURL = String.format("%s/%s/%s", baseTezATSUri, Constants.TEZ_DAG_ID, dagId);
+      LOG.info("Will attempt to download dag: " + dagURL);
+      JSONObject dagRoot = getJsonRootEntity(dagURL);
+      finalJson.put(Constants.DAG, dagRoot);
 
-    //Get primaryFilters and the related entities
-    JSONObject primaryFilters = dagRoot.optJSONObject(Constants.PRIMARY_FILTERS);
-    if (primaryFilters != null) {
-      JSONArray dagNames = primaryFilters.optJSONArray(Constants.DAG_NAME);
-      JSONArray applicationIds = primaryFilters.optJSONArray(Constants.APPLICATION_ID);
-      populateAdditionalInfo(applicationIds, dagNames, zos);
+      fos = new FileOutputStream(zipFile, false);
+      zos = new ZipOutputStream(fos);
+
+      //Create a zip entry with dagId as its name.
+      ZipEntry zipEntry = new ZipEntry(dagId + ".json");
+      zos.putNextEntry(zipEntry);
+      //Write in formatted way
+      IOUtils.write(finalJson.toString(4), zos, UTF8);
+
+      //Get primaryFilters and the related entities
+      JSONObject primaryFilters = dagRoot.optJSONObject(Constants.PRIMARY_FILTERS);
+      if (primaryFilters != null) {
+        JSONArray dagNames = primaryFilters.optJSONArray(Constants.DAG_NAME);
+        JSONArray applicationIds = primaryFilters.optJSONArray(Constants.APPLICATION_ID);
+        populateAdditionalInfo(applicationIds, dagNames, zos);
+      }
+
+      //Download vertex
+      String vertexURL =
+          String.format(VERTEX_QUERY_STRING, baseTezATSUri,
+              Constants.TEZ_VERTEX_ID, batchSize, Constants.TEZ_DAG_ID, dagId);
+      LOG.info("Will attempt to download vertices: " + vertexURL);
+      downloadJSONArrayFromATS(vertexURL, zos, Constants.VERTICES);
+
+      //Download task
+      String taskURL = String.format(TASK_QUERY_STRING, baseTezATSUri,
+          Constants.TEZ_TASK_ID, batchSize, Constants.TEZ_DAG_ID, dagId);
+      LOG.info("Will attempt to download tasks: " + taskURL);
+      downloadJSONArrayFromATS(taskURL, zos, Constants.TASKS);
+
+      //Download task attempts
+      String taskAttemptURL = String.format(TASK_ATTEMPT_QUERY_STRING, baseTezATSUri,
+          Constants.TEZ_TASK_ATTEMPT_ID, batchSize, Constants.TEZ_DAG_ID, dagId);
+      downloadJSONArrayFromATS(taskAttemptURL, zos, Constants.TASK_ATTEMPTS);
+
+    } catch (FileNotFoundException fne) {
+      LOG.error("File not found ", fne);
+    } finally {
+      IOUtils.closeQuietly(zos);
+      IOUtils.closeQuietly(fos);
     }
-
-    //Download vertex
-    String vertexURL =
-        String.format(VERTEX_QUERY_STRING, baseTezATSUri,
-            Constants.TEZ_VERTEX_ID, batchSize, Constants.TEZ_DAG_ID, dagId);
-    downloadJSONArrayFromATS(vertexURL, zos, Constants.VERTICES);
-
-    //Download task
-    String taskURL = String.format(TASK_QUERY_STRING, baseTezATSUri,
-        Constants.TEZ_TASK_ID, batchSize, Constants.TEZ_DAG_ID, dagId);
-    downloadJSONArrayFromATS(taskURL, zos, Constants.TASKS);
-
-    //Download task attempts
-    String taskAttemptURL = String.format(TASK_ATTEMPT_QUERY_STRING, baseTezATSUri,
-        Constants.TEZ_TASK_ATTEMPT_ID, batchSize, Constants.TEZ_DAG_ID, dagId);
-    downloadJSONArrayFromATS(taskAttemptURL, zos, Constants.TASK_ATTEMPTS);
   }
 
   /**
@@ -276,7 +388,8 @@ public class ATSImportTool_V2 extends Configured implements Tool {
           hiveJson.append(Constants.DAG, getJsonRootEntity(hiveURL));
         }
       } catch (JSONException | ATSImportException exception) {
-        LOG.warn("Unable to download Hive info. Ignoring it.", exception);
+        LOG.warn("Unable to download Hive info. Ignoring it. Error Msg: "
+            + exception.getMessage());
         //No need to bail out
       }
     }
@@ -288,7 +401,7 @@ public class ATSImportTool_V2 extends Configured implements Tool {
           String appId = appIds.getString(i);
 
           //Download YARN details (if available).
-          String yarnAppUrl = baseYarnATSUri + appId;
+          String yarnAppUrl = baseYarnATSHistoryUri + appId;
           LOG.info("Will attempt to download YARN app url : " + yarnAppUrl);
           JSONObject yarnApp = getJsonRootEntity(yarnAppUrl);
           yarnJson.append(YARN_APP, yarnApp);
@@ -310,7 +423,8 @@ public class ATSImportTool_V2 extends Configured implements Tool {
           }
         }
       } catch (JSONException | ATSImportException exception) {
-        LOG.warn("Unable to download YARN info. Ignoring it.", exception);
+        LOG.warn("Unable to download YARN info. Ignoring it. Error Msg: "
+            + exception.getMessage());
         //No need to bail out
       }
     }
@@ -332,7 +446,8 @@ public class ATSImportTool_V2 extends Configured implements Tool {
       //Write in formatted way
       IOUtils.write(finalJson.toString(4), zos, UTF8);
     } catch (JSONException jsonException) {
-      LOG.warn("Error writing additionalInfo to zip. Ignoring it", jsonException);
+      LOG.warn("Error writing additionalInfo to zip. Ignoring it. Error Msg: " +
+          jsonException.getMessage());
     }
 
   }
@@ -463,31 +578,50 @@ public class ATSImportTool_V2 extends Configured implements Tool {
   }
 
   private static Options buildOptions() {
-    Option dagIdOption = OptionBuilder.withArgName(DAG_ID).withLongOpt(DAG_ID)
-        .withDescription("DagId that needs to be downloaded").hasArg().isRequired(true).create();
+    Option appIdOption = OptionBuilder.withArgName(APP_ID).withLongOpt(APP_ID)
+        .withDescription("AppId that needs to be downloaded").hasArg().isRequired(true).create();
 
-    Option downloadDirOption = OptionBuilder.withArgName(BASE_DOWNLOAD_DIR).withLongOpt
-        (BASE_DOWNLOAD_DIR)
-        .withDescription("Download directory where data needs to be downloaded").hasArg()
+    Option dagIdOption = OptionBuilder.withArgName(DAG_ID)
+        .withLongOpt(DAG_ID)
+        .withDescription("DagIds that needs to be downloaded. Can specify multiple dagIds as "
+            + "--dagId dag1 --dagId dag2..")
+        .hasArg()
+        .isRequired(false).create();
+
+    Option downloadDirOption = OptionBuilder.withArgName(BASE_DOWNLOAD_DIR)
+        .withLongOpt(BASE_DOWNLOAD_DIR)
+        .withDescription("Download directory where data needs to be downloaded")
+        .hasArg()
         .isRequired(true).create();
 
-    Option atsAddressOption = OptionBuilder.withArgName(YARN_TIMELINE_SERVICE_ADDRESS).withLongOpt(
-        YARN_TIMELINE_SERVICE_ADDRESS)
-        .withDescription("Optional. ATS address (e.g http://clusterATSNode:8188)").hasArg()
-        .isRequired(false)
-        .create();
+    Option atsAddressOption = OptionBuilder.withArgName(YARN_TIMELINE_SERVICE_ADDRESS)
+        .withLongOpt(YARN_TIMELINE_SERVICE_ADDRESS)
+        .withDescription("Optional. ATS address (e.g http://clusterATSNode:8188)")
+        .hasArg()
+        .isRequired(false).create();
 
-    Option batchSizeOption = OptionBuilder.withArgName(BATCH_SIZE).withLongOpt(BATCH_SIZE)
-        .withDescription("Optional. batch size for downloading data").hasArg()
-        .isRequired(false)
-        .create();
+    Option yarnStatusAddress = OptionBuilder.withArgName(YARN_RM_STATUS_ADDRESS)
+        .withLongOpt(YARN_RM_STATUS_ADDRESS)
+        .withDescription("Optional. YARN RM Status address (e.g http://rm:8188)")
+        .hasArg()
+        .isRequired(false).create();
 
-    Option help = OptionBuilder.withArgName("help").withLongOpt("help")
-        .withDescription("print help").isRequired(false).create();
+    Option batchSizeOption = OptionBuilder.withArgName(BATCH_SIZE)
+        .withLongOpt(BATCH_SIZE)
+        .withDescription("Optional. batch size for downloading data")
+        .hasArg()
+        .isRequired(false).create();
+
+    Option help = OptionBuilder.withArgName("help")
+        .withLongOpt("help")
+        .withDescription("print help")
+        .isRequired(false).create();
 
     Options opts = new Options();
+    opts.addOption(appIdOption);
     opts.addOption(dagIdOption);
     opts.addOption(downloadDirOption);
+    opts.addOption(yarnStatusAddress);
     opts.addOption(atsAddressOption);
     opts.addOption(batchSizeOption);
     opts.addOption(help);
@@ -556,9 +690,22 @@ public class ATSImportTool_V2 extends Configured implements Tool {
     return Joiner.on("").join(baseAddress, Constants.RESOURCE_URI_BASE);
   }
 
-  static String getYARNBaseATSUrl(String baseAddress) {
+  static String getYARNHistoryBaseUrl(String baseAddress) {
     //TODO: Move it to Constants
     return Joiner.on("").join(baseAddress, "/ws/v1/applicationhistory/apps/");
+  }
+
+  static String getYarnRMWebAppUrl(Configuration conf) {
+    String webAppAddress = "";
+    boolean isHttps = hasHttpsPolicy(conf);
+    if (isHttps) {
+      webAppAddress = HTTPS_SCHEME + conf.get(YarnConfiguration.RM_WEBAPP_HTTPS_ADDRESS,
+          YarnConfiguration.DEFAULT_RM_WEBAPP_ADDRESS);
+    } else {
+      webAppAddress = HTTP_SCHEME + conf.get(YarnConfiguration.RM_WEBAPP_ADDRESS,
+          YarnConfiguration.DEFAULT_RM_WEBAPP_HTTPS_ADDRESS);
+    }
+    return Joiner.on("").join(webAppAddress, YARN_RM_STATUS_QUERY);
   }
 
   @VisibleForTesting
@@ -567,20 +714,32 @@ public class ATSImportTool_V2 extends Configured implements Tool {
     LOG.info("Processing..");
     int result = -1;
     try {
-      Configuration conf = new Configuration();
+      YarnConfiguration conf = new YarnConfiguration();
       CommandLine cmdLine = new GnuParser().parse(options, args);
-      String dagId = cmdLine.getOptionValue(DAG_ID);
+      String appId = cmdLine.getOptionValue(APP_ID);
+      Preconditions.checkArgument(!Strings.isNullOrEmpty(appId), "Please provide appId");
+      String[] dagIds = cmdLine.getOptionValues(DAG_ID);
 
       File downloadDir = new File(cmdLine.getOptionValue(BASE_DOWNLOAD_DIR));
 
       String yarnTimelineAddress = cmdLine.getOptionValue(YARN_TIMELINE_SERVICE_ADDRESS);
       String baseTimelineURL = getBaseTimelineURL(yarnTimelineAddress, conf);
 
+      String yarnRMStatusUrl = null;
+      if (yarnTimelineAddress != null) {
+        yarnRMStatusUrl = cmdLine.getOptionValue(YARN_RM_STATUS_ADDRESS);
+        yarnRMStatusUrl = yarnRMStatusUrl + YARN_RM_STATUS_QUERY;
+      } else {
+        //Get it from local conf
+        yarnRMStatusUrl = getYarnRMWebAppUrl(conf);
+      }
+
+
       int batchSize = (cmdLine.hasOption(BATCH_SIZE)) ?
           (Integer.parseInt(cmdLine.getOptionValue(BATCH_SIZE))) : BATCH_SIZE_DEFAULT;
 
-      result = ToolRunner.run(conf, new ATSImportTool_V2(baseTimelineURL, dagId,
-          downloadDir, batchSize), args);
+      result = ToolRunner.run(conf, new ATSImportTool_V2(yarnRMStatusUrl, baseTimelineURL,
+          appId, dagIds, downloadDir, batchSize), args);
 
       return result;
     } catch (MissingOptionException missingOptionException) {
@@ -601,7 +760,8 @@ public class ATSImportTool_V2 extends Configured implements Tool {
     if (Strings.isNullOrEmpty(System.getProperty(LOG4J_CONFIGURATION))) {
       //By default print to console with INFO level
       org.apache.log4j.Logger.getRootLogger().
-          addAppender(new ConsoleAppender(new PatternLayout(PatternLayout.TTCC_CONVERSION_PATTERN)));
+          addAppender(
+              new ConsoleAppender(new PatternLayout(PatternLayout.TTCC_CONVERSION_PATTERN)));
       org.apache.log4j.Logger.getRootLogger().setLevel(Level.INFO);
     }
   }

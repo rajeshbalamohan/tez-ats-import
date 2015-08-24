@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.apache.tez</groupId>
-  <artifactId>tez</artifactId>
+  <artifactId>tez-ats-import</artifactId>
   <version>0.8.0-SNAPSHOT</version>
 
   <properties>
@@ -62,12 +62,12 @@
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-common</artifactId>
-      <version>${version}</version>
+      <version>0.8.0-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-dag</artifactId>
-      <version>${version}</version>
+      <version>0.8.0-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
@@ -87,6 +87,18 @@
           <target>1.7</target>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>org.apache.tez.history.ATSImportTool_V2</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+      <!--
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-assembly-plugin</artifactId>
@@ -111,6 +123,7 @@
           </execution>
         </executions>
       </plugin>
+      -->
     </plugins>
   </build>
 </project>

@@ -1,18 +1,53 @@
-Tez ATS import tool, which can optionally download data from related entities (e.g Hive related contents would be downloaded to "additionalInfo" json).
+This is an extension of ATSImportTool in tez.  It tries to download all information pertaining to an application
+
+1. Wait till the app is over & Fetch app details from YARN / Hive / Tez.
+2. Given an appId, download all dags pertaining to it. E.g In HiveServer2, a session might have 100s of DAGs. This tool downloads all of them if needed.
+3. Given an appId, download specific set of dags.
+4. Ability to download from different timeline server and RM server.
+5. Every dag downloaded would be saved in separate file. Each of these files can be analyzed separately.
 
 These additionally downloaded related entities are stored in additionalInfo.json in the downloaded zip file.  These info can be exposed via getAdditionalInfo (DAGInfo) later.
 
 YARN related information are also be retrieved and stored. (e.g http://atsmachine:8188/ws/v1/applicationhistory/apps/application_1437197396589_0782/appattempts)
 
-Run (example):
-=============
-DO NOT FORGET TO SPECIFY "org.apache.tez.history.ATSImportTool_V2"
-
-HADOOP_CLASSPATH=TEZ_JARS/*:$TEZ_JARS/lib/*:$HADOOP_CLASSPATH hadoop jar /tmp/test/tez-ats-import/target/tez-0.8.0-SNAPSHOT.jar org.apache.tez.history.ATSImportTool_V2 --dagId dag_1437197396589_0783_1  --downloadDir=/tmp/test --yarnTimelineAddress http://atsmachine.com:8188
-
-In case hadoop config already has timeline address, ignore specifying yarnTimelineAddress from the above example.
-
-Tez related jars are needed as it ATSImportTool relies on TezDAGID.
+Usage:
+======  
+  yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar
+  
+  Options
+    --appId <appId>                               AppId that needs to be downloaded
+    --batchSize <batchSize>                       Optional. batch size for downloading data
+    --dagId <dagId>                               DagIds that needs to be downloaded. Can specify multiple dagIds as --dagId dag1 --dagId dag2..
+    --downloadDir <downloadDir>                   Download directory where data needs to be downloaded
+    --help                                        print help
+    --yarnRMStatusAddress <yarnRMStatusAddress>   Optional. YARN RM Status address (e.g http://rm:8188)
+    --yarnTimelineAddress <yarnTimelineAddress>   Optional. ATS address (e.g http://clusterATSNode:8188)
+  
+  *IMPORTANT*
+  With ATS V1.5, you might want to download all tasks in single fetch itself (to avoid download issues).
+  In such cases, memory pressure would be more. To mitigate this, run command with 'YARN_CLIENT_OPTS="-Xmx4g $YARN_CLIENT_OPTS" '. 
+  Also, specify "--batchSize 10000". Refer examples below.
+  
+  
+Examples:
+=========
+  - Print usage
+    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar
+  
+  - Download all dags in the application
+    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0084 --downloadDir /tmp/test
+  
+  - Download all dags in the application with ATS V 1.5 enabled (In this case, we need to download all tasks at-once)
+    YARN_CLIENT_OPTS="-Xmx4g $YARN_CLIENT_OPTS" yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0084 --downloadDir /tmp/test --batchSize 100000
+  
+  - Download only one dag in the application
+    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0091 --dagId dag_1439860407967_0091_2 --downloadDir /tmp/test
+  
+  - Download multiple dags in the application
+    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0091 --dagId dag_1439860407967_0091_1 --dagId dag_1439860407967_0091_2 --downloadDir /tmp/test
+    
+  - Download from different TimelineServer
+    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439220865134_0100 --downloadDir /tmp/test/ --yarnTimelineAddress http://diff_ATS_Server:8188 --yarnRMStatusAddress http://diff_RM_cluster_machine:8088
 
 
 Example additionalInfo.json:
@@ -84,3 +119,4 @@ MAPRED: false
             },
 ....
 ...
+
