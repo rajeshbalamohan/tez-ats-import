@@ -632,12 +632,11 @@ public class ATSImportTool_V2 extends Configured implements Tool {
     HelpFormatter formatter = new HelpFormatter();
     formatter.setWidth(240);
     String help = LINE_SEPARATOR
-        + "java -cp tez-history-parser-x.y.z-jar-with-dependencies.jar org.apache.tez.history.ATSImportTool"
+        + "java -cp tez-ats-import-0.8.0-SNAPSHOT.jar org.apache.tez.history.ATSImportTool"
         + LINE_SEPARATOR
         + "OR"
         + LINE_SEPARATOR
-        + "HADOOP_CLASSPATH=$TEZ_HOME/*:$TEZ_HOME/lib/*:$HADOOP_CLASSPATH hadoop jar "
-        + "tez-history-parser-x.y.z.jar " + ATSImportTool_V2.class.getName()
+        + " yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar"
         + LINE_SEPARATOR;
     formatter.printHelp(240, help, "Options", options, "", true);
   }
