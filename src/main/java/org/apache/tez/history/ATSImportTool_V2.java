@@ -728,7 +728,8 @@ public class ATSImportTool_V2 extends Configured implements Tool {
       if (yarnTimelineAddress != null) {
         yarnRMStatusUrl = cmdLine.getOptionValue(YARN_RM_STATUS_ADDRESS);
         Preconditions.checkArgument(!Strings.isNullOrEmpty(yarnRMStatusUrl), "Please provide a "
-            + "valid " + YARN_RM_STATUS_ADDRESS + " e.g --yarnRMStatusAddress=http://RMNode:8088");
+            + "valid " + YARN_RM_STATUS_ADDRESS + " e.g --yarnRMStatusAddress "
+            + "\"http://RMNode:8088\"");
         yarnRMStatusUrl = yarnRMStatusUrl + YARN_RM_STATUS_QUERY;
       } else {
         //Get it from local conf
