@@ -38,22 +38,22 @@ Usage:
 Examples:
 =========
   - Print usage
-    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar
+    yarn jar tez-ats-import-1.0.0-SNAPSHOT.jar
   
   - Download all dags in the application
-    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0084 --downloadDir /tmp/test
+    yarn jar tez-ats-import-1.0.0-SNAPSHOT.jar --appId application_1439860407967_0084 --downloadDir /tmp/test
   
   - Download all dags in the application with ATS V 1.5 enabled (In this case, we need to download all tasks at-once)
-    YARN_CLIENT_OPTS="-Xmx4g $YARN_CLIENT_OPTS" yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0084 --downloadDir /tmp/test --batchSize 100000
+    YARN_CLIENT_OPTS="-Xmx4g $YARN_CLIENT_OPTS" yarn jar tez-ats-import-1.0.0-SNAPSHOT.jar --appId application_1439860407967_0084 --downloadDir /tmp/test --batchSize 100000
   
   - Download only one dag in the application
-    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0091 --dagId dag_1439860407967_0091_2 --downloadDir /tmp/test
+    yarn jar tez-ats-import-1.0.0-SNAPSHOT.jar --appId application_1439860407967_0091 --dagId dag_1439860407967_0091_2 --downloadDir /tmp/test
   
   - Download multiple dags in the application
-    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439860407967_0091 --dagId dag_1439860407967_0091_1 --dagId dag_1439860407967_0091_2 --downloadDir /tmp/test
+    yarn jar tez-ats-import-1.0.0-SNAPSHOT.jar --appId application_1439860407967_0091 --dagId dag_1439860407967_0091_1 --dagId dag_1439860407967_0091_2 --downloadDir /tmp/test
     
   - Download from different TimelineServer
-    yarn jar tez-ats-import-0.8.0-SNAPSHOT.jar --appId application_1439220865134_0100 --downloadDir /tmp/test/ --yarnTimelineAddress http://diff_ATS_Server:8188 --yarnRMStatusAddress http://diff_RM_cluster_machine:8088
+    yarn jar tez-ats-import-1.0.0-SNAPSHOT.jar --appId application_1439220865134_0100 --downloadDir /tmp/test/ --yarnTimelineAddress http://diff_ATS_Server:8188 --yarnRMStatusAddress http://diff_RM_cluster_machine:8088
 
 
 Example additionalInfo.json:

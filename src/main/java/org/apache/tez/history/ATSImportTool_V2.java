@@ -53,7 +53,6 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.PatternLayout;
-import org.apache.tez.history.parser.datamodel.Constants;
 import org.codehaus.jettison.json.JSONArray;
 import org.codehaus.jettison.json.JSONException;
 import org.codehaus.jettison.json.JSONObject;

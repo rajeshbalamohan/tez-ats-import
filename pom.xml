@@ -6,7 +6,7 @@
 
   <groupId>org.apache.tez</groupId>
   <artifactId>tez-ats-import</artifactId>
-  <version>0.8.0-SNAPSHOT</version>
+  <version>1.0.0-SNAPSHOT</version>
 
   <properties>
     <hadoop.version>2.6.0</hadoop.version>
@@ -54,25 +54,13 @@
       This should be fine, as 0.5.x had these classes. Also "mvn clean package" creates a
       standalone package which can be given for downloading contents
      -->
+
+
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-api</artifactId>
-      <version>${version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.tez</groupId>
-      <artifactId>tez-common</artifactId>
-      <version>${version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.tez</groupId>
-      <artifactId>tez-dag</artifactId>
-      <version>${version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.tez</groupId>
-      <artifactId>tez-history-parser</artifactId>
-      <version>${version}</version>
+      <!-- Marking it as the lowest release -->
+      <version>0.5.1</version>
     </dependency>
   </dependencies>
 
