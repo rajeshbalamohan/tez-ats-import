@@ -10,6 +10,8 @@ These additionally downloaded related entities are stored in additionalInfo.json
 
 YARN related information are also be retrieved and stored. (e.g http://atsmachine:8188/ws/v1/applicationhistory/apps/application_1437197396589_0782/appattempts)
 
+In case you are not comfortable building it, you can download the jar file from this directory
+
 Build & Install:
 ================
 Run "mvn clean package"
